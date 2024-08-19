@@ -1,4 +1,3 @@
-import json
 import re
 from datetime import datetime, time
 import speech_recognition as sr
@@ -15,7 +14,6 @@ import sqlite3
 
 load_dotenv()
 
-# Set up database
 db = SQLDatabase.from_uri("sqlite:///project_planner.db")
 
 
@@ -244,7 +242,6 @@ def save_task(task):
                    (task['task'], task['timeframe'], task['details'], due_date_str))
     conn.commit()
 
-    # Debug: Print the inserted task
     cursor.execute("SELECT * FROM tasks WHERE id = last_insert_rowid()")
     inserted_task = cursor.fetchone()
     print("Inserted task:")
@@ -302,12 +299,16 @@ def main():
         if user_intent is None:
             continue
 
+        print(f"You said: {user_intent}")
+
         if "create task" in user_intent.lower():
             print("\n--- Create New Task ---")
             print("Please describe the task you'd like to add:")
             user_input = speech_to_text()
             if user_input is None:
                 continue
+
+            print(f"You said: {user_input}")  # New line to print user's speech
 
             response = create_chain.invoke({"user_input": user_input})
             save_task(response)
@@ -318,6 +319,8 @@ def main():
             user_input = speech_to_text()
             if user_input is None:
                 continue
+
+            print(f"You said: {user_input}")  # New line to print user's speech
 
             ai_response = retrieve_chain.invoke({"user_input": user_input})
             query = ensure_valid_query(ai_response)
