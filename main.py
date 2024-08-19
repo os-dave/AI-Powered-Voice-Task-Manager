@@ -4,58 +4,14 @@ import speech_recognition as sr
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.runnables import RunnableSequence
-from langchain_core.messages import AIMessage
-from langchain_community.utilities import SQLDatabase
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from dotenv import load_dotenv
 from dateutil import parser as date_parser
 import os
+from langchain.schema import AIMessage
 import sqlite3
 
 load_dotenv()
-
-db = SQLDatabase.from_uri("sqlite:///project_planner.db")
-
-
-def parse_due_date_and_time(task):
-    due_date = task.get('due_date')
-
-    print(f"Parsing due date and time for task: {task['task']}")
-    print(f"Due date from task: {due_date}")
-
-    parsed_date = datetime.strptime(due_date, "%Y-%m-%d").date()
-
-    parsed_time = time(12, 0)
-
-    full_datetime = datetime.combine(parsed_date, parsed_time)
-    print(f"Parsed datetime: {full_datetime}")
-    return full_datetime
-
-
-def save_task(task):
-    conn = sqlite3.connect("project_planner.db")
-    cursor = conn.cursor()
-
-    due_date = parse_due_date_and_time(task)
-    due_date_str = due_date.strftime(
-        "%Y-%m-%d %H:%M:%S")
-
-    cursor.execute("INSERT INTO tasks (task, timeframe, details, due_date) VALUES (?, ?, ?, ?)",
-                   (task['task'], task['timeframe'], task['details'], due_date_str))
-    conn.commit()
-
-    cursor.execute("SELECT * FROM tasks WHERE id = last_insert_rowid()")
-    inserted_task = cursor.fetchone()
-    print("Inserted task:")
-    print(inserted_task)
-
-    conn.close()
-
-    print("Task saved successfully!")
-    print(f"Task: {task['task']}")
-    print(f"Timeframe: {task['timeframe']}")
-    print(f"Details: {task['details']}")
-    print(f"Due Date saved: {due_date_str}")
 
 
 def update_database_schema():
@@ -73,8 +29,6 @@ def update_database_schema():
     conn.commit()
     conn.close()
 
-
-update_database_schema()
 
 llm = ChatOpenAI(
     temperature=0,
@@ -139,19 +93,19 @@ retrieve_prompt = PromptTemplate(
 )
 
 
-def ensure_valid_query(message):
-    if isinstance(message, AIMessage):
-        query = message.content
-    elif isinstance(message, str):
-        query = message
+def ensure_valid_query(query):
+    if isinstance(query, AIMessage):
+        query_text = query.content
+    elif isinstance(query, str):
+        query_text = query
     else:
-        raise ValueError(f"Unexpected type for query: {type(message)}")
+        raise ValueError(f"Unexpected query type: {type(query)}")
 
-    if not query.strip().lower().startswith("select"):
-        query = "SELECT * FROM tasks;"
-    if not query.strip().endswith(";"):
-        query = query.strip() + ";"
-    return query
+    if not query_text.strip().lower().startswith("select"):
+        query_text = "SELECT * FROM tasks;"
+    if not query_text.strip().endswith(";"):
+        query_text = query_text.strip() + ";"
+    return query_text
 
 
 retrieve_chain = RunnableSequence(
@@ -160,49 +114,21 @@ retrieve_chain = RunnableSequence(
 )
 
 
-def clean_sql_query(query):
-    sql_pattern = r'SELECT.*?FROM.*?(WHERE.*?)?;?'
-    match = re.search(sql_pattern, query, re.IGNORECASE | re.DOTALL)
-    if match:
-        clean_query = match.group(0)
-        if not clean_query.strip().endswith(';'):
-            clean_query += ';'
-        return clean_query
-    else:
-        raise ValueError("No valid SQL query found in the generated text.")
-
-
 def parse_due_date_and_time(task):
     due_date = task.get('due_date')
     details = task.get('details', '')
 
-    print(f"Parsing due date and time for task: {task['task']}")
-    print(f"Due date from task: {due_date}")
-    print(f"Details: {details}")
-
     time_match = re.search(
         r'(\d{1,2}:\d{2}\s*(?:a\.m\.|p\.m\.))', details, re.IGNORECASE)
-
-    if time_match:
-        print(f"Time found in details: {time_match.group(1)}")
-    else:
-        print("No time found in details")
 
     if due_date:
         try:
             parsed_date = date_parser.parse(due_date).date()
-            if time_match:
-                parsed_time = date_parser.parse(time_match.group(1)).time()
-            else:
-                parsed_time = time(0, 0)
-
-            full_datetime = datetime.combine(parsed_date, parsed_time)
-            print(f"Parsed datetime: {full_datetime}")
-            return full_datetime
-        except ValueError as e:
-            print(f"Failed to parse date/time: {e}")
-
-    print("Returning None as due date")
+            parsed_time = date_parser.parse(time_match.group(
+                1)).time() if time_match else time(0, 0)
+            return datetime.combine(parsed_date, parsed_time)
+        except ValueError:
+            pass
     return None
 
 
@@ -223,18 +149,11 @@ def save_task(task):
     cursor = conn.cursor()
 
     due_date = parse_due_date_and_time(task)
-    due_date_str = due_date.strftime(
-        "%Y-%m-%d %H:%M:%S")
+    due_date_str = due_date.strftime("%Y-%m-%d %H:%M:%S") if due_date else None
 
     cursor.execute("INSERT INTO tasks (task, timeframe, details, due_date) VALUES (?, ?, ?, ?)",
                    (task['task'], task['timeframe'], task['details'], due_date_str))
     conn.commit()
-
-    cursor.execute("SELECT * FROM tasks WHERE id = last_insert_rowid()")
-    inserted_task = cursor.fetchone()
-    print("Inserted task:")
-    print(inserted_task)
-
     conn.close()
 
     print("Task saved successfully!")
@@ -256,22 +175,6 @@ def retrieve_tasks(query):
     except sqlite3.Error as e:
         print(f"An error occurred: {e}")
         return []
-    finally:
-        conn.close()
-
-
-def log_all_tasks():
-    conn = sqlite3.connect("project_planner.db")
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT * FROM tasks")
-        tasks = cursor.fetchall()
-        print("All tasks in the database:")
-        for task in tasks:
-            print(
-                f"ID: {task[0]}, Task: {task[1]}, Timeframe: {task[2]}, Details: {task[3]}, Due Date: {task[4]}")
-    except sqlite3.Error as e:
-        print(f"An error occurred while logging tasks: {e}")
     finally:
         conn.close()
 
@@ -336,4 +239,5 @@ def main():
 
 
 if __name__ == "__main__":
+    update_database_schema()
     main()
