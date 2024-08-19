@@ -5,3 +5,5 @@ python-dotenv
 SpeechRecognition
 python-dateutil
 openai
+pyaudio
+sqlite3
