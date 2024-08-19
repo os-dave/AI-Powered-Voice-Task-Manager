@@ -23,13 +23,10 @@ def parse_due_date_and_time(task):
     print(f"Parsing due date and time for task: {task['task']}")
     print(f"Due date from task: {due_date}")
 
-    # Parse the due_date from the input
     parsed_date = datetime.strptime(due_date, "%Y-%m-%d").date()
 
-    # Always use 12:00 PM as the time
     parsed_time = time(12, 0)
 
-    # Combine the date from due_date and fixed time
     full_datetime = datetime.combine(parsed_date, parsed_time)
     print(f"Parsed datetime: {full_datetime}")
     return full_datetime
@@ -41,13 +38,12 @@ def save_task(task):
 
     due_date = parse_due_date_and_time(task)
     due_date_str = due_date.strftime(
-        "%Y-%m-%d %H:%M:%S")  # Format including time
+        "%Y-%m-%d %H:%M:%S")
 
     cursor.execute("INSERT INTO tasks (task, timeframe, details, due_date) VALUES (?, ?, ?, ?)",
                    (task['task'], task['timeframe'], task['details'], due_date_str))
     conn.commit()
 
-    # Debug: Print the inserted task
     cursor.execute("SELECT * FROM tasks WHERE id = last_insert_rowid()")
     inserted_task = cursor.fetchone()
     print("Inserted task:")
@@ -80,14 +76,12 @@ def update_database_schema():
 
 update_database_schema()
 
-# Set up LLM with API key and specific model
 llm = ChatOpenAI(
     temperature=0,
     model_name="gpt-4o-mini",
     api_key=os.getenv('OPENAI')
 )
 
-# Set up output parser for JSON responses
 response_schemas = [
     ResponseSchema(name="task", description="The task or goal described"),
     ResponseSchema(
@@ -99,7 +93,6 @@ response_schemas = [
 ]
 output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
 
-# Set up prompt template for task creation
 create_template = """
 You are an AI assistant for project planning. Based on the user's input, provide a response and structure it as follows:
 {format_instructions}
@@ -123,7 +116,6 @@ create_chain = RunnableSequence(
     output_parser
 )
 
-# Set up prompt template for task retrieval
 retrieve_template = """
 You are an AI assistant for project planning. The user wants to retrieve tasks from the 'tasks' table.
 Generate a SQL query based on the user's input. The table has these columns: id, task, timeframe, details, due_date.
@@ -169,12 +161,10 @@ retrieve_chain = RunnableSequence(
 
 
 def clean_sql_query(query):
-    # Remove any explanatory text before or after the actual SQL query
     sql_pattern = r'SELECT.*?FROM.*?(WHERE.*?)?;?'
     match = re.search(sql_pattern, query, re.IGNORECASE | re.DOTALL)
     if match:
         clean_query = match.group(0)
-        # Ensure the query ends with a semicolon
         if not clean_query.strip().endswith(';'):
             clean_query += ';'
         return clean_query
@@ -190,7 +180,6 @@ def parse_due_date_and_time(task):
     print(f"Due date from task: {due_date}")
     print(f"Details: {details}")
 
-    # Try to extract time from details
     time_match = re.search(
         r'(\d{1,2}:\d{2}\s*(?:a\.m\.|p\.m\.))', details, re.IGNORECASE)
 
@@ -205,7 +194,6 @@ def parse_due_date_and_time(task):
             if time_match:
                 parsed_time = date_parser.parse(time_match.group(1)).time()
             else:
-                # Default to midnight if no time specified
                 parsed_time = time(0, 0)
 
             full_datetime = datetime.combine(parsed_date, parsed_time)
@@ -236,7 +224,7 @@ def save_task(task):
 
     due_date = parse_due_date_and_time(task)
     due_date_str = due_date.strftime(
-        "%Y-%m-%d %H:%M:%S")  # Format including time
+        "%Y-%m-%d %H:%M:%S")
 
     cursor.execute("INSERT INTO tasks (task, timeframe, details, due_date) VALUES (?, ?, ?, ?)",
                    (task['task'], task['timeframe'], task['details'], due_date_str))
@@ -308,7 +296,7 @@ def main():
             if user_input is None:
                 continue
 
-            print(f"You said: {user_input}")  # New line to print user's speech
+            print(f"You said: {user_input}")
 
             response = create_chain.invoke({"user_input": user_input})
             save_task(response)
@@ -320,7 +308,7 @@ def main():
             if user_input is None:
                 continue
 
-            print(f"You said: {user_input}")  # New line to print user's speech
+            print(f"You said: {user_input}")
 
             ai_response = retrieve_chain.invoke({"user_input": user_input})
             query = ensure_valid_query(ai_response)
